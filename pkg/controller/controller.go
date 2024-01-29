@@ -9,7 +9,6 @@ import (
 
 	"github.com/VictoriaMetrics/metrics"
 	batchv1 "k8s.io/api/batch/v1"
-	corev1 "k8s.io/api/core/v1"
 	apierrs "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -31,28 +30,22 @@ func metricName(name string, namespace string) string {
 
 const (
 	resyncPeriod           = time.Second * 30
-	podDeletedMetric       = "pods_deleted_total"
-	podDeletedFailedMetric = "pods_deleted_failed_total"
 	jobDeletedFailedMetric = "jobs_deleted_failed_total"
 	jobDeletedMetric       = "jobs_deleted_total"
 )
 
-// Kleaner watches the kubernetes api for changes to Pods and Jobs and
-// delete those according to configured timeouts
+// Kleaner watches the kubernetes api for changes to Jobs and
+// deletes those according to configured timeouts
 type Kleaner struct {
-	podInformer cache.SharedIndexInformer
 	jobInformer cache.SharedIndexInformer
 	kclient     *kubernetes.Clientset
 
 	deleteSuccessfulAfter time.Duration
 	deleteFailedAfter     time.Duration
-	deletePendingAfter    time.Duration
-	deleteOrphanedAfter   time.Duration
-	deleteEvictedAfter    time.Duration
 
 	ignoreOwnedByCronjob bool
-	
-	labelSelector        string
+
+	labelSelector string
 
 	dryRun bool
 	ctx    context.Context
@@ -60,8 +53,13 @@ type Kleaner struct {
 }
 
 // NewKleaner creates a new NewKleaner
-func NewKleaner(ctx context.Context, kclient *kubernetes.Clientset, namespace string, dryRun bool, deleteSuccessfulAfter,
-	deleteFailedAfter, deletePendingAfter, deleteOrphanedAfter, deleteEvictedAfter time.Duration, ignoreOwnedByCronjob bool,
+func NewKleaner(ctx context.Context,
+	kclient *kubernetes.Clientset,
+	namespace string,
+	dryRun bool,
+	deleteSuccessfulAfter,
+	deleteFailedAfter time.Duration,
+	ignoreOwnedByCronjob bool,
 	labelSelector string,
 	stopCh <-chan struct{}) *Kleaner {
 	jobInformer := cache.NewSharedIndexInformer(
@@ -80,21 +78,6 @@ func NewKleaner(ctx context.Context, kclient *kubernetes.Clientset, namespace st
 		cache.Indexers{},
 	)
 	// Create informer for watching Namespaces
-	podInformer := cache.NewSharedIndexInformer(
-		&cache.ListWatch{
-			ListFunc: func(options metav1.ListOptions) (runtime.Object, error) {
-				options.LabelSelector = labelSelector
-				return kclient.CoreV1().Pods(namespace).List(ctx, options)
-			},
-			WatchFunc: func(options metav1.ListOptions) (watch.Interface, error) {
-				options.LabelSelector = labelSelector
-				return kclient.CoreV1().Pods(namespace).Watch(ctx, options)
-			},
-		},
-		&corev1.Pod{},
-		resyncPeriod,
-		cache.Indexers{},
-	)
 	kleaner := &Kleaner{
 		dryRun:                dryRun,
 		kclient:               kclient,
@@ -102,9 +85,6 @@ func NewKleaner(ctx context.Context, kclient *kubernetes.Clientset, namespace st
 		stopCh:                stopCh,
 		deleteSuccessfulAfter: deleteSuccessfulAfter,
 		deleteFailedAfter:     deleteFailedAfter,
-		deletePendingAfter:    deletePendingAfter,
-		deleteOrphanedAfter:   deleteOrphanedAfter,
-		deleteEvictedAfter:    deleteEvictedAfter,
 		ignoreOwnedByCronjob:  ignoreOwnedByCronjob,
 		labelSelector:         labelSelector,
 	}
@@ -115,15 +95,7 @@ func NewKleaner(ctx context.Context, kclient *kubernetes.Clientset, namespace st
 			}
 		},
 	})
-	podInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		UpdateFunc: func(old, new interface{}) {
-			if !reflect.DeepEqual(old, new) {
-				kleaner.Process(new)
-			}
-		},
-	})
 
-	kleaner.podInformer = podInformer
 	kleaner.jobInformer = jobInformer
 
 	return kleaner
@@ -140,18 +112,14 @@ func (c *Kleaner) periodicCacheCheck() {
 			for _, job := range c.jobInformer.GetStore().List() {
 				c.Process(job)
 			}
-			for _, obj := range c.podInformer.GetStore().List() {
-				c.Process(obj)
-			}
 		}
 	}
 }
 
-// Run starts the process for listening for pod changes and acting upon those changes.
+// Run starts the process for listening for job changes and acting upon those changes.
 func (c *Kleaner) Run() {
 	log.Printf("Listening for changes...")
 
-	go c.podInformer.Run(c.stopCh)
 	go c.jobInformer.Run(c.stopCh)
 
 	go c.periodicCacheCheck()
@@ -168,20 +136,6 @@ func (c *Kleaner) Process(obj interface{}) {
 		}
 		if shouldDeleteJob(t, c.deleteSuccessfulAfter, c.deleteFailedAfter, c.ignoreOwnedByCronjob) {
 			c.DeleteJob(t)
-		}
-	case *corev1.Pod:
-		pod := t
-		// skip pods that are already in the deleting process
-		if !pod.DeletionTimestamp.IsZero() {
-			return
-		}
-		// skip pods related to jobs created by cronjobs if `ignoreOwnedByCronjob` is set
-		if c.ignoreOwnedByCronjob && podRelatedToCronJob(pod, c.jobInformer.GetStore()) {
-			return
-		}
-		// normal cleanup flow
-		if shouldDeletePod(t, c.deleteOrphanedAfter, c.deletePendingAfter, c.deleteEvictedAfter, c.deleteSuccessfulAfter, c.deleteFailedAfter) {
-			c.DeletePod(t)
 		}
 	}
 }
@@ -200,19 +154,4 @@ func (c *Kleaner) DeleteJob(job *batchv1.Job) {
 		return
 	}
 	metrics.GetOrCreateCounter(metricName(jobDeletedMetric, job.Namespace)).Inc()
-}
-
-func (c *Kleaner) DeletePod(pod *corev1.Pod) {
-	if c.dryRun {
-		log.Printf("dry-run: Pod '%s:%s' would have been deleted", pod.Namespace, pod.Name)
-		return
-	}
-	log.Printf("Deleting pod '%s/%s'", pod.Namespace, pod.Name)
-	var po metav1.DeleteOptions
-	if err := c.kclient.CoreV1().Pods(pod.Namespace).Delete(c.ctx, pod.Name, po); ignoreNotFound(err) != nil {
-		log.Printf("failed to delete pod '%s:%s': %v", pod.Namespace, pod.Name, err)
-		metrics.GetOrCreateCounter(metricName(podDeletedFailedMetric, pod.Namespace)).Inc()
-		return
-	}
-	metrics.GetOrCreateCounter(metricName(podDeletedMetric, pod.Namespace)).Inc()
 }

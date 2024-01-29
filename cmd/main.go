@@ -45,22 +45,14 @@ func main() {
 	namespace := flag.String("namespace", "", "Limit scope to a single namespace")
 	listenAddr := flag.String("listen-addr", "0.0.0.0:7000", "Address to expose metrics.")
 
-	deleteSuccessAfter := flag.Duration("delete-successful-after", 15*time.Minute, "Delete jobs and pods in successful state after X duration (golang duration format, e.g 5m), 0 - never delete")
-	deleteFailedAfter := flag.Duration("delete-failed-after", 0, "Delete jobs and pods in failed state after X duration (golang duration format, e.g 5m), 0 - never delete")
-	deleteOrphanedAfter := flag.Duration("delete-orphaned-pods-after", 1*time.Hour, "Delete orphaned pods. Pods without an owner in non-running state (golang duration format, e.g 5m), 0 - never delete")
-	deleteEvictedAfter := flag.Duration("delete-evicted-pods-after", 15*time.Minute, "Delete pods in evicted state (golang duration format, e.g 5m), 0 - never delete")
-	deletePendingAfter := flag.Duration("delete-pending-pods-after", 0, "Delete pods in pending state after X duration (golang duration format, e.g 5m), 0 - never delete")
-	ignoreOwnedByCronjob := flag.Bool("ignore-owned-by-cronjobs", false, "[EXPERIMENTAL] Do not cleanup pods and jobs created by cronjobs")
-
-	legacyKeepSuccessHours := flag.Int64("keep-successful", 0, "Number of hours to keep successful jobs, -1 - forever, 0 - never (default), >0 number of hours")
-	legacyKeepFailedHours := flag.Int64("keep-failures", -1, "Number of hours to keep failed jobs, -1 - forever (default) 0 - never, >0 number of hours")
-	legacyKeepPendingHours := flag.Int64("keep-pending", -1, "Number of hours to keep pending jobs, -1 - forever (default) >0 number of hours")
-	legacyMode := flag.Bool("legacy-mode", true, "Legacy mode: `true` - use old `keep-*` flags, `false` - enable new `delete-*-after` flags")
+	deleteSuccessAfter := flag.Duration("delete-successful-after", 15*time.Minute, "Delete jobs in successful state after X duration (golang duration format, e.g 5m), 0 - never delete")
+	deleteFailedAfter := flag.Duration("delete-failed-after", 0, "Delete jobs in failed state after X duration (golang duration format, e.g 5m), 0 - never delete")
+	ignoreOwnedByCronjob := flag.Bool("ignore-owned-by-cronjobs", false, "[EXPERIMENTAL] Do not cleanup jobs created by cronjobs")
 
 	dryRun := flag.Bool("dry-run", false, "Print only, do not delete anything.")
-	
-	labelSelector := flag.String("label-selector", "", "Delete only jobs and pods that meet label selector requirements")
-	
+
+	labelSelector := flag.String("label-selector", "", "Delete only jobs that meet label selector requirements")
+
 	flag.Parse()
 	setupLogging()
 
@@ -71,29 +63,10 @@ func main() {
 	optsInfo.WriteString(fmt.Sprintf("\tdry-run: %v\n", *dryRun))
 	optsInfo.WriteString(fmt.Sprintf("\tdelete-successful-after: %s\n", *deleteSuccessAfter))
 	optsInfo.WriteString(fmt.Sprintf("\tdelete-failed-after: %s\n", *deleteFailedAfter))
-	optsInfo.WriteString(fmt.Sprintf("\tdelete-pending-after: %s\n", *deletePendingAfter))
-	optsInfo.WriteString(fmt.Sprintf("\tdelete-orphaned-after: %s\n", *deleteOrphanedAfter))
-	optsInfo.WriteString(fmt.Sprintf("\tdelete-evicted-after: %s\n", *deleteEvictedAfter))
 	optsInfo.WriteString(fmt.Sprintf("\tignore-owned-by-cronjobs: %v\n", *ignoreOwnedByCronjob))
 
-	optsInfo.WriteString(fmt.Sprintf("\n\tlegacy-mode: %v\n", *legacyMode))
-	optsInfo.WriteString(fmt.Sprintf("\tkeep-successful: %d\n", *legacyKeepSuccessHours))
-	optsInfo.WriteString(fmt.Sprintf("\tkeep-failures: %d\n", *legacyKeepFailedHours))
-	optsInfo.WriteString(fmt.Sprintf("\tkeep-pending: %d\n", *legacyKeepPendingHours))
-	
 	optsInfo.WriteString(fmt.Sprintf("\tlabel-selector: %s\n", *labelSelector))
 	log.Println(optsInfo.String())
-
-	if *legacyMode {
-		var warning strings.Builder
-		warning.WriteString("\n!!! DEPRECATION WARNING !!!\n")
-		warning.WriteString("\t Operator is running in `legacy` mode. Using old format of arguments. Please change the settings.\n")
-		warning.WriteString("\t`keep-successful` is deprecated, use `delete-successful-after` instead\n")
-		warning.WriteString("\t`keep-failures` is deprecated, use `delete-failed-after` instead\n")
-		warning.WriteString("\t`keep-pending` is deprecated, use `delete-pending-after` instead\n")
-		warning.WriteString(" These fields are going to be removed in the next version\n")
-		log.Println(warning.String())
-	}
 
 	sigsCh := make(chan os.Signal, 1) // Create channel to receive OS signals
 	stopCh := make(chan struct{})     // Create channel to receive stopCh signal
@@ -111,33 +84,17 @@ func main() {
 
 	wg.Add(1)
 	go func() {
-		if *legacyMode {
-			controller.NewPodController(
-				ctx,
-				clientset,
-				*namespace,
-				*dryRun,
-				*legacyKeepSuccessHours,
-				*legacyKeepFailedHours,
-				*legacyKeepPendingHours,
-				stopCh,
-			).Run()
-		} else {
-			controller.NewKleaner(
-				ctx,
-				clientset,
-				*namespace,
-				*dryRun,
-				*deleteSuccessAfter,
-				*deleteFailedAfter,
-				*deletePendingAfter,
-				*deleteOrphanedAfter,
-				*deleteEvictedAfter,
-				*ignoreOwnedByCronjob,
-				*labelSelector,
-				stopCh,
-			).Run()
-		}
+		controller.NewKleaner(
+			ctx,
+			clientset,
+			*namespace,
+			*dryRun,
+			*deleteSuccessAfter,
+			*deleteFailedAfter,
+			*ignoreOwnedByCronjob,
+			*labelSelector,
+			stopCh,
+		).Run()
 		wg.Done()
 	}()
 	log.Printf("Controller started...")

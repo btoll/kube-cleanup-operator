@@ -5,7 +5,7 @@ replicas: 1
 imagePullSecrets: []
 
 image:
-  repository: quay.io/lwolf/kube-cleanup-operator
+  repository: btoll/kube-cleanup-operator
   pullPolicy: IfNotPresent
 
 ## Additional labels and annotations for the deployment resource
@@ -112,7 +112,6 @@ args: []
   # - --delete-pending-pods-after=60m
   # - --delete-evicted-pods-after=60m
   # - --delete-orphaned-pods-after=60m
-  # - --legacy-mode=false
 
 ## Environment variables for the container
 ##

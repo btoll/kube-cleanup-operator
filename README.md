@@ -1,26 +1,15 @@
 # Kubernetes cleanup operator
 
-[![Build Status](https://travis-ci.org/lwolf/kube-cleanup-operator.svg?branch=master)](https://travis-ci.org/lwolf/kube-cleanup-operator)
-[![Go Report Card](https://goreportcard.com/badge/github.com/lwolf/kube-cleanup-operator)](https://goreportcard.com/report/github.com/lwolf/kube-cleanup-operator)
-[![Docker Repository on Quay](https://quay.io/repository/lwolf/kube-cleanup-operator/status "Docker Repository on Quay")](https://quay.io/repository/lwolf/kube-cleanup-operator)
-[![codecov](https://codecov.io/gh/lwolf/kube-cleanup-operator/branch/master/graph/badge.svg)](https://codecov.io/gh/lwolf/kube-cleanup-operator)
-
-Kubernetes Controller to automatically delete completed Jobs and Pods.
-Controller listens for changes in Pods and Jobs and acts accordingly with config arguments.
+Kubernetes Controller to automatically delete completed Jobs.
+Controller listens for changes in Jobs and acts accordingly with config arguments.
 
 Some common use-case scenarios:
 * Delete Jobs and their pods after their completion
-* Delete Pods stuck in a Pending state
-* Delete Pods in Evicted state
-* Delete orphaned Pods (Pods without an owner in non-running state)
 
 | flag name                  | pod                                                   | job                           |
 | -------------------------- | ----------------------------------------------------- | ----------------------------- |
 | delete-successful-after    | delete after specified period if owned by the job     | delete after specified period |
 | delete-failed-after        | delete after specified period if owned by the job     | delete after specified period |
-| delete-orphaned-pods-after | delete after specified period (any completion status) | N/A                           |
-| delete-evicted-pods-after  | delete on discovery                                   | N/A                           |
-| delete-pending-pods-after  | delete after specified period                         | N/A                           |
 
 
 ## Helm chart
@@ -87,7 +76,7 @@ Pre v0.7.0
             Set this flag when running outside of the cluster.
       -keep-successful
             the number of hours to keep a successful job
-            -1 - forever 
+            -1 - forever
             0  - never (default)
             >0 - number of hours
       -keep-failures
@@ -102,18 +91,12 @@ Pre v0.7.0
             >0 - number of hours
       -dry-run
             Perform dry run, print only
-``` 
+```
 
 After v0.7.0
 
 ```
 Usage of ./bin/kube-cleanup-operator:
-  -delete-evicted-pods-after duration
-        Delete pods in evicted state (golang duration format, e.g 5m), 0 - never delete (default 15m0s)
-  -delete-failed-after duration
-        Delete jobs and pods in failed state after X duration (golang duration format, e.g 5m), 0 - never delete
-  -delete-orphaned-pods-after duration
-        Delete orphaned pods. Pods without an owner in non-running state (golang duration format, e.g 5m), 0 - never delete (default 1h0m0s)
   -delete-pending-pods-after duration
         Delete pods in pending state after X duration (golang duration format, e.g 5m), 0 - never delete
   -delete-successful-after duration
@@ -128,8 +111,6 @@ Usage of ./bin/kube-cleanup-operator:
         Number of hours to keep pending jobs, -1 - forever (default) >0 number of hours (default -1)
   -keep-successful int
         Number of hours to keep successful jobs, -1 - forever, 0 - never (default), >0 number of hours
-  -legacy-mode true
-        Legacy mode: true - use old `keep-*` flags, `false` - enable new `delete-*-after` flags (default true)
   -listen-addr string
         Address to expose metrics. (default "0.0.0.0:7000")
   -namespace string
@@ -140,7 +121,7 @@ Usage of ./bin/kube-cleanup-operator:
         Delete only jobs and pods that meet label selector requirements. #See https://kubernetes.io/docs/concepts/overview/working-with-objects/labels/
 ```
 
-### Optional parameters 
+### Optional parameters
 
 DISCLAIMER: These parameters are not supported on this project since they are implemented by the underlying libraries. Any malfunction regarding the use them is not covered by this GitHub repository. They are included in this documentation since the debugging process is simplified.
 

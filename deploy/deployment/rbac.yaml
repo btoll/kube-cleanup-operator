@@ -9,15 +9,6 @@ kind: ClusterRole
 metadata:
   name: cleanup-operator
 rules:
-- apiGroups:
-  - ""
-  resources:
-  - pods
-  verbs:
-  - get
-  - list
-  - watch
-  - delete
 - apiGroups: ["batch", "extensions"]
   resources:
   - jobs

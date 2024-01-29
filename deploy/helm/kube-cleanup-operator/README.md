@@ -20,7 +20,6 @@ Kubernetes Operator to automatically delete completed Jobs and their Pods
 | args[3] | string | `"--delete-pending-pods-after=60m"` |  |
 | args[4] | string | `"--delete-evicted-pods-after=60m"` |  |
 | args[5] | string | `"--delete-orphaned-pods-after=60m"` |  |
-| args[6] | string | `"--legacy-mode=false"` |  |
 | containerSecurityContext | string | `nil` |  |
 | envVariables | list | `[]` |  |
 | image.pullPolicy | string | `"IfNotPresent"` |  |

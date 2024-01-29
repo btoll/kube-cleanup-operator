@@ -27,8 +27,7 @@ spec:
       containers:
       - args:
         - --namespace=default
-        - --legacy-mode=false
-        image: quay.io/lwolf/kube-cleanup-operator
+        image: btoll/kube-cleanup-operator
         imagePullPolicy: Always
         name: cleanup-operator
         ports:
